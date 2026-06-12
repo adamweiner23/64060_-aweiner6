@@ -1,0 +1,151 @@
+---
+title: "Assignment 3"
+author: "Adam Weiner"
+date: "2026-06-12"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+## Setup
+```{r}
+library(caret)
+library(e1071)
+library(gmodels)
+
+bank <- read.csv("UniversalBank-1.csv")
+names(bank)
+
+bank$Loan <- factor(bank$Personal.Loan)
+bank$CC <- factor(bank$CreditCard)
+bank$Online <- factor(bank$Online)
+
+set.seed(123)
+
+Index_Train <- createDataPartition(bank$Loan, p = 0.60, list = FALSE)
+
+Train <- bank[Index_Train, ]
+Validation <- bank[-Index_Train, ]
+
+dim(Train)
+dim(Validation)
+```
+## Note
+The data was partitioned into a training set that held 60% of the observations and a validation set that held 40% of the observations
+
+
+## Part A Pivot Table
+```{r}
+pivot_A <- table(
+  CC = Train$CC,
+  Loan = Train$Loan,
+  Online = Train$Online
+)
+
+pivot_A
+```
+## Part A Write-up
+The given pivot table summarizes the loan acceptance by credit card ownership and online banking status for the training dataset. The majority of the customers did not accept the personal loan, regardless of their credit card and online banking status. The group that had the largest amount of customers was seen in online section, within the no loan and no credit card area, with a total of 1,144 customers. Also, the customers that were seen to have both a credit card and did online banking had 51 loan acceptances and 467 rejections. 
+
+## Part B Classification
+```{r}
+prob_B <- 51 / (467 + 51)
+prob_B
+```
+## Part B Write-up
+The probability that a customer accepts teh loan offer knowing that they have a credit card from the bank and use online banking (P(Loan=1|CC=1, Online=1) = 51/(467+51)) is 0.09845. This indicates that 9.85% of customers who have a credit card and participate in online banking accept the personal loan. 
+
+## Part C New Pivot Tables
+```{r}
+pivot_online <- table(
+  Loan = Train$Loan,
+  Online = Train$Online
+)
+
+pivot_online
+
+pivot_cc <- table(
+  Loan = Train$Loan,
+  CC = Train$CC
+)
+
+pivot_cc
+```
+## Part C Write-up
+The first pivot table displayed shows the loan acceptance by a customers online banking status. For the customers that accepted the loan, 176 participated in online banking and 112 didn't. For the customers who rejected the loan, 1,611 used online banking and 1,101 didn't. 
+The second pivot table displayed the loan acceptance by a customer's credit card status. For the customers that accepted the loan, 84 had a credit card with the bank and 204 did not. For the customers who rejected the loan, 777 had a bank credit card and 1,935 did not. 
+
+## Part D Probabilities
+```{r}
+# P(CC = 1 | Loan = 1) The proportion of credit card holders among loan acceptors
+prob_CC1_given_Loan1 <- 84 / (204 + 84)
+
+# P(Online = 1 | Loan = 1)
+prob_Online1_given_Loan1 <- 176 / (112 + 176)
+
+# P(Loan = 1) The proportion of loan acceptors
+prob_Loan1 <- (204 + 84) / 3000
+
+# P(CC = 1 | Loan = 0)
+prob_CC1_given_Loan0 <- 777 / (1935 + 777)
+
+# P(Online = 1 | Loan = 0)
+prob_Online1_given_Loan0 <- 1611 / (1101 + 1611)
+
+# P(Loan = 0)
+prob_Loan0 <- (1935 + 777) / 3000
+
+prob_CC1_given_Loan1
+prob_Online1_given_Loan1
+prob_Loan1
+prob_CC1_given_Loan0
+prob_Online1_given_Loan0
+prob_Loan0
+```
+## Part D Write-up
+The probabilities displayed were calculated using the previous pivot table numbers from Part C. For customers who had accepted the personal loan offer, 29.17% had a credit card and 61.11% participated in online banking. The probability of accepting the personal loan in general was just 9.60%. For customers who did not accept the loan offer, 28.65% had a credit card and 59.40% participated in online banking. The probability of rejecting the personal loan was 90.40%. 
+
+## Part E Naive Bayes
+```{r}
+numerator <- 
+  prob_CC1_given_Loan1 *
+  prob_Online1_given_Loan1 *
+  prob_Loan1
+
+denominator <- 
+  numerator +
+  (
+    prob_CC1_given_Loan0 *
+      prob_Online1_given_Loan0 *
+      prob_Loan0
+  )
+
+prob_E <- numerator / denominator
+
+prob_E
+```
+
+## Part E Write-up
+I used a Naive Bayes formula to calculate the given probabilities. The probability that a customer accepts a loan offer given that they have a credit card and participate in online banking is 0.1000861. This indicates that the Naive Bayes model estimates a 10.01% chance of a customer of this type accepting the personal loan offer. 
+
+## Part F Write-up
+The original probability from the pivot table in Part b was 9.85%, and the new Naive Bayes model gave a probability of 10.01%. Though these probabilities are very close, they are not identical as the Naive Bayes model assumes that both Credit Card status and Online banking status are conditionally independent given their Loan status. Given this information, I would argue that the pivot table probability is more accurate than the Naive Bayes model because it uses the observed joint counts for customers that use both credit cards and online banking. However, the Naive Bayes model would have been more useful if we made predictions for new observations. 
+
+## Part G Computing
+```{r}
+nb_model <- naiveBayes(Loan ~ CC + Online, data = Train)
+
+nb_model
+
+new_customer <- data.frame(
+  CC = factor(1, levels = c(0,1)),
+  Online = factor(1, levels = c(0,1))
+)
+
+nb_probability <- predict(nb_model, new_customer, type = "raw")
+
+nb_probability
+```
+
+## Part G Write-up
+This Naive Bayes model had an estimated probability of 0.1000861 that a customer with a credit card and used online banking would accept the personal loan offer, which is roughly 10.01%. The model also had an estimated probability of 89.99% that a customer would reject the personal loan offer. Given that the estimated probability matches what we had previously calculated from Part E, this confirms the calculations in both Naive Bayes models we preformed. 
