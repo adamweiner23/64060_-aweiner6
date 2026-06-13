@@ -1,0 +1,115 @@
+---
+title: "Assignment 4"
+author: "Adam Weiner"
+date: "2026-06-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+## Setup
+```{r}
+library(caret)
+library(factoextra)
+
+pharma <- read.csv("~/Downloads/Pharmaceuticals.csv")
+
+str(pharma)
+```
+
+## Part A Cluster
+```{r}
+pharma_numeric <- pharma[, c(
+  "Market_Cap",
+  "Beta",
+  "PE_Ratio",
+  "ROE",
+  "ROA",
+  "Asset_Turnover",
+  "Leverage",
+  "Rev_Growth",
+  "Net_Profit_Margin"
+)]
+
+summary(pharma_numeric)
+
+pharma_scaled <- scale(pharma_numeric)
+
+summary(pharma_scaled)
+```
+# Cluster Continued
+```{r}
+set.seed(123)
+
+kmeans_2 <- kmeans(pharma_scaled, centers = 2, nstart = 25)
+kmeans_3 <- kmeans(pharma_scaled, centers = 3, nstart = 25)
+kmeans_4 <- kmeans(pharma_scaled, centers = 4, nstart = 25)
+
+kmeans_2$tot.withinss
+kmeans_3$tot.withinss
+kmeans_4$tot.withinss
+```
+
+# Model for Part A
+```{r}
+set.seed(123)
+
+kmeans_model <- kmeans(
+  pharma_scaled,
+  centers = 3,
+  nstart = 25
+)
+
+kmeans_model
+```
+
+# Final Part A Model
+```{r}
+pharma$Cluster <- factor(kmeans_model$cluster)
+
+pharma[, c("Symbol", "Name", "Cluster")]
+```
+
+## Part A Write-up
+The 9 numerical variables in the data were cleaned and standardized before I began the clustering analysis since many of the variables were measured on different scales, like Market Cap since it was so large. I did 2, 3, and 4 cluster solutions and used the total within-cluster sum of squares for the evaluation. I used the three cluster solution since it helped provide a meaningful reduction in the within-cluster variation, and still had results that were easy to understand and interpret. In the final model, there were three clusters that contained 4, 11, and 6 firms. 
+
+## Part B Cluster Interpretation
+```{r}
+aggregate(
+  pharma_numeric,
+  by = list(Cluster = pharma$Cluster),
+  mean
+)
+```
+
+## Part B Write-up
+In looking across the clustering analysis, the three clusters that were created showed significant differences in their results. First, Cluster 2 was seen to have the largest and most profitable firms as they had the highest average Market Cap. They also had the largest Return on Assets (ROA), Return on Equity (ROE), as well as Net Profit Margin. Next, Cluster 3 was seen to mostly be consisting of smaller firms that had the highest average Revenue Growth and Leverage. This could indicate that the companies within this cluster are more likely to be taking on more financial risk while developing growth opportunities in the company. Finally, Cluster 1 was seen to have the highest PE Ratio, but lower profitability and growth numbers than the other two clusters analyzed. Overall, Cluster 2 seems to contain the larger and more profitable pharmaceutical companies, with Cluster 3 containing smaller and growing companies, and Cluster 1 appearing to have the weaker firms financially. 
+
+## Part C Patterns
+```{r}
+table(pharma$Cluster, pharma$Median_Recommendation)
+
+table(pharma$Cluster, pharma$Location)
+
+table(pharma$Cluster, pharma$Exchange)
+```
+
+## Part C Write-up
+Upon analyzing the patterns across the three clusters, I noticed several things. In the median recommendation section, only Cluster 1 was listed with a Strong Buy recommendation, whereas Clusters 2 and 3 did not have any Strong Buy recommendations. However, most of the firms in this section were seen to be listed in the Hold or Moderate Buy recommendations. In looking across the location section, I noticed that Cluster 2 was made up of majority US dominated firms. Cluster 1 was a mix of countries from Canada, Germany, the UK, and the US as well. Cluster 3 was mostly made up of US firms, but still had locations in France and Ireland. In the exchange section, Clusters 1 and 2 were only found in the NYSE, whereas Cluster 3 had firms that were listed in all three exchanges. Overall, these patterns indicate that there are differences across the clusters in their analyst recommendations, locations, and stock exchange listings. 
+
+## Part D Naming
+```{r}
+data.frame(
+  Cluster = c(1, 2, 3),
+  Name = c(
+    "High Valuation, Low Performance Companies",
+    "Large and Profitable Companies",
+    "Smaller and Growing Companies"
+  )
+)
+```
+
+## Part D Write-up
+I determined each cluster's name based off of their characteristics and results from the previous questions. I decided to name Cluster 1 "High Valuation, Low Performance Companies" as they had the largest average PE ratio but lower profits and growth estimates than its counterparts. I named Cluster 2 "Large and Profitable Companies" as they were seen to have the largest firms based on their Market Capitalization, and they also had the highest average ROE, ROA, and Net Profit Margin. I named Cluster 3 "Smaller and Growing Companies" as they had the lowest average Market Capitalization out of the three clusters but still had the highest Revenue Growth and Leverage estimates. This suggested to me that these are firms that are trying to grow their brands while taking on more financial responsibilities. 
