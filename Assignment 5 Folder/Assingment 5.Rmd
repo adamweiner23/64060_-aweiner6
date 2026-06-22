@@ -1,0 +1,137 @@
+---
+title: "Assignment 5"
+author: "Adam Weiner"
+date: "2026-06-22"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(cluster)
+library(factoextra)
+library(dplyr)
+```
+
+```{r}
+cereal <- read.csv("Cereals.csv")
+
+## Missing values removed
+cereal <- na.omit(cereal)
+
+## Cereal Names
+cereal_names <- cereal$name
+
+## Cereal Names in Rows
+row.names(cereal) <- cereal$name
+
+## Non Numeric Varaibles
+cereal_num <- cereal %>%
+select(-name, -mfr, -type)
+
+## Standardize
+cereal_scaled <- scale(cereal_num)
+```
+
+
+## Part A Hierarchial Clustering
+```{r}
+ag_single <- agnes(cereal_scaled, method = "single")
+ag_complete <- agnes(cereal_scaled, method = "complete")
+ag_average <- agnes(cereal_scaled, method = "average")
+ag_ward <- agnes(cereal_scaled, method = "ward")
+
+ag_single$ac
+ag_complete$ac
+ag_average$ac
+ag_ward$ac
+```
+## Part A Write-up
+I removed the observations with missing values within the dataset and standardized the numerical values. I then performed hierarchial clustering using the agnes algorithm and Euclidean distance metrics. There were four linkage methods that were evaluated, those being 0.6068, 0.8354, 0.7766, and 0.9046. These coefficients measure the strength of each clustering structure, and the larger values indicate that their observations were grouped together more effectively. The Ward linkage method had given us the highest coefficient whcih suggested it was the strongest cluster in the dataset for cereal. The Ward linkage is the preferred clustering method going forward. 
+
+## Part B
+```{r}
+plot(as.hclust(ag_ward),
+     labels = FALSE,
+     hang = -1,
+     main = "Ward Dengrogram")
+
+fviz_nbclust(cereal_scaled,
+             FUN = hcut,
+             method = "silhouette")
+
+clusters <- cutree(as.hclust(ag_ward), k = 3)
+
+table(clusters)
+cereal$Cluster <- clusters
+aggregate(cereal_num,
+          by = list(Cluster = clusters),
+          mean)
+
+clusters4 <- cutree(as.hclust(ag_ward), k = 4)
+table(clusters4)
+aggregate(cereal_num,
+          by = list(Cluster = clusters4),
+          mean)
+```
+
+## Part B Write-up
+I created a Ward dendrogram and it suggested that three clusters would be a reasonable and balanced solution that helps display important differences between the cereals and makes them interpretable. The silhouette plot I created did indicate that a 10 cluster solution would give us better separation between the categories, however upon increasing the number of clusters, the groupings became smaller and much less meaningful. The four cluster solution had a group that only contained three cereals, so the model was beginning to split the cereals into small groupings instead of creating new cereal categories. So, the three cluster solution had more balanced categories and cluster sizes as clusters 1, 2, and 3 had 23, 21, and 30 cereals respectively. Also, their cluster summaries provided us with meaningful differences in their cereal make-ups. the first cluster had cereals that were higher in fiber and potassium levels, the second had cereals that were high in their sugar levels and lower in their ratings, and the third had cereals with lower sugar levels and higher ratings. Given that the 3 cluster solution gave us the most balanced results that were easily interpretable, and provided us with meaningufl differences in their nutrition, it was the selected number of clusters I chose. 
+
+## Part C Comment on Structure
+```{r}
+cluster_summary <- aggregate(cereal_num,
+                             by = list(Cluster = clusters),
+                             mean)
+cluster_summary
+```
+
+## Part C Structure Write-up
+The three cluster solution had given us strong nutritional groupings for each cluster. Cluster 1 had cereals with the highest levels of fiber, protein, and potassium levels by strong margins. Cluster 2 contained cereals with the highest average sugar levels, the lowest fiber levels, and the lowest consumer ratings. Cluster 3 contained cereals with the lowest calories, fat ratings, sugar levels, and was the highest in consumer ratings. These main differences between each cluster indicate that the clustering algorithm was successful in separating the cereals into meaningful groups. 
+
+## Part C Comment on Stability
+```{r}
+set.seed(123)
+
+# Split into A and B
+train_index <- sample(1:nrow(cereal_scaled),
+                      size = round(0.5 * nrow(cereal_scaled)))
+A <- cereal_scaled[train_index, ]
+B <- cereal_scaled[-train_index, ]
+
+dim(A)
+dim(B)
+
+# Cluster partition A
+ag_A <- agnes(A, method = "ward")
+clusters_A <- cutree(as.hclust(ag_A), k = 3)
+
+table(clusters_A)
+
+# Centroids from partition A
+centroids_A <- aggregate(A,
+                         by = list(Cluster = clusters_A),
+                         mean)
+centroids_A
+
+# Remove cluster column label
+centers <- as.matrix(centroids_A[, -1])
+
+## B observations to nearest centroid
+dist_to_centers <- as.matrix(dist(rbind(centers, B)))
+dist_to_centers <- dist_to_centers[
+  1:nrow(centers),
+  (nrow(centers) + 1):nrow(dist_to_centers)
+]
+
+B_assign <- apply(dist_to_centers, 2, which.min)
+
+table(B_assign)
+```
+
+## Part C Stability Write-up
+In looking at the cluster stability, the data was divided into two partitions randomly. Partition A used Ward's method and gave us cluster sizes of 12, 11, and 14 cereals respectively. Then, the cluster centroids from A were then used to assign cereals in Partition B to their closest cluster. This gave us cluster sizes of 14, 6, and 17 cereals respectively. Given that all three clusters were still represented and their observations were seen to stil separate into similar groups, it suggests the solution is relatively stable. So, the three cluster solution I had used gave us meaningful and easily interpretable results and groups, all of which stayed stable across each partition. 
+
+## Part D Elementary Schools
+In identifying the healthy cereals for elementary schools and students within them, I would recommend they choose from Cluster 3. This was the cluster that had the lowest average calories, sugar levels, and fat levels while also being rating with the highest consumer ratings out of the three clusters. Even though Cluster 1 had the cereals with the highest fiber levels, Cluster 3 had a much better balance between all of the nutritional factors which helped me come to the conclusion of it being the strongest choice. Additionally, the data should be normalized before doing any cluster analysis as the nutritional variables within the dataset are all measured on different scales. If we did not normalize or standardize the data, the variables with the larger scales would be seen to control the distance calculations and greatly influence how the clusters are formed. Standardizing the variables before performing a cluster analysis allows each variable, and in this case nutritional characteristic, to be represented fairly across the analysis. This helps us get better information and more meaningful clusters. 
