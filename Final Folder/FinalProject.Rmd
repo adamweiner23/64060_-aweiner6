@@ -1,0 +1,266 @@
+---
+title: "Final Project"
+author: "Adam Weiner"
+date: "2026-06-27"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+### I. Executive Summary
+
+  The goal of this project was to analyze and interpret fuel purchasing patterns across power plants in the United States using different machine learning methods. A random 2% sample was created from the PUDL monthly fuel receipts and costs dataset. The sample was cleaned and was absent of any variables that had copious missing values. A K-means clustering analysis was performed as the main method to help identify the power plants with similar fuel purchasing contracts. Both a three and four-cluster solution were created, however, the three-cluster solution was the selected model as it generated results that were much more balanced and interpretable. The analysis produced three distinct fuel purchasing segments that were separated by fuel type, heat content, sulfur content, ash content, purchase volume, and fuel costs. The coal purchases grouping was the most distinguishable out of the three clusters, with the other two being heavily associated with natural gas purchases. The geographic location and state variables did not have a meaningful impact on the purchasing behaviors of the plants in the sample, which suggested that the purchasing decisions are primarily based on the characteristics of the fuel rather than where the fuel is collected from. The findings from this analysis display how K-means clustering methods can be used to help understand how fuel purchasing behaviors, patterns, and decisions are made and can help power plants evaluate their strategies and costs in the future. 
+
+### II. Introduction
+  
+  This project uses a Public Utility Data Liberation (PUDL) dataset for monthly fuel receipts and costs. This dataset contains useful information on fuel purchasing contracts for various power plants across the United States. The raw dataset contained 296,604 observations and included variables like fuel quality, fuel costs, and other characteristics of fuel. 
+  
+  Before beginning the analysis, the dataset was cleaned to ensure the best quality of the results and to boost the credibility of the findings. The variables that had extreme missing values and identifier variables were removed before the clustering analysis began. The character variables in the dataset were converted into the correct data types, the categorical variables were converted into factors, and the numeric variables were standardized accordingly. The key variables that remained were found to be a strong representation of the dataset and contained information that was useful in identifying power plant fuel purchasing patterns. These key variables were "fuel_received_units", "fuel_mmbtu_per_unit", "fuel_cost_per_mmbtu", "fuel_received_mmbtu", "total_fuel_cost", "sulfur_content_pct", and "ash_content_pct". 
+  
+  Due to the size of the original dataset, a random 2% sample was performed by using a fixed random seed to make sure these methods were able to be replicated. This created a sample of 5,932 observations. Once the observations with the abundant missing values were removed, the data was then divided into a 75% and 25% training and testing set respectively. Before the creation of the training and testing splits, the observations that contained missing values for "fuel_cost_per_mmbtu" and "total_fuel_cost" were removed. These variables were later included in the clustering analysis and modeling, so they needed to be removed as the observations with missing values couldn't be used here. Once the missing observations were removed, the rest of the data was randomly split the two sets. The training data was used for the K-means clustering model, and the testing data was saved for later analyses. 
+
+```{r, include=FALSE}
+library(dplyr)
+library(caret)
+library(cluster)
+library(factoextra)
+library(ggplot2)
+
+fuel_data <- read.csv("/Users/adamweiner/Downloads/out_eia923__monthly_fuel_receipts_costs.csv")
+
+str(fuel_data)
+summary(fuel_data)
+```
+
+
+```{r, include=FALSE}
+fuel_data[fuel_data == "null"] <- NA
+
+fuel_data$fuel_cost_per_mmbtu <- as.numeric(fuel_data$fuel_cost_per_mmbtu)
+fuel_data$total_fuel_cost <- as.numeric(fuel_data$total_fuel_cost)
+fuel_data$mercury_content_ppm <- as.numeric(fuel_data$mercury_content_ppm)
+fuel_data$moisture_content_pct <- as.numeric(fuel_data$moisture_content_pct)
+fuel_data$chlorine_content_ppm <- as.numeric(fuel_data$chlorine_content_ppm)
+
+fuel_data$state <- as.factor(fuel_data$state)
+fuel_data$fuel_type_code_pudl <- as.factor(fuel_data$fuel_type_code_pudl)
+fuel_data$fuel_cost_per_mmbtu_source <- as.factor(fuel_data$fuel_cost_per_mmbtu_source)
+fuel_data$data_maturity <- as.factor(fuel_data$data_maturity)
+```
+
+
+```{r, include=FALSE}
+missing_values <- colSums(is.na(fuel_data))
+missing_percent <- colSums(is.na(fuel_data)) / nrow(fuel_data) * 100
+
+missing_table <- data.frame(
+  Variable = names(fuel_data),
+  Missing_Count = missing_values,
+  Missing_Percent = missing_percent
+)
+
+missing_table
+```
+
+```{r, include=FALSE}
+fuel_clean <- fuel_data %>%
+  select(
+    -plant_id_eia,
+    -plant_id_pudl,
+    -plant_name_eia,
+    -utility_id_eia,
+    -utility_id_pudl,
+    -utility_name_eia,
+    -report_date,
+    -moisture_content_pct,
+    -chlorine_content_ppm
+  )
+
+str(fuel_clean)
+```
+
+## 2% Sample
+```{r, echo=FALSE}
+set.seed(6406)
+
+sample_index <- sample(
+  1:nrow(fuel_clean),
+  size = round(0.02 * nrow(fuel_clean))
+)
+
+fuel_sample <- fuel_clean[sample_index, ]
+
+dim(fuel_sample)
+
+summary(fuel_sample)
+```
+
+## Train/Test Split
+```{r, echo=FALSE}
+fuel_sample2 <- fuel_sample %>%
+  filter(!is.na(fuel_cost_per_mmbtu),
+         !is.na(total_fuel_cost))
+
+set.seed(6406)
+
+train_index <- createDataPartition(
+  fuel_sample2$fuel_cost_per_mmbtu,
+  p = 0.75,
+  list = FALSE
+)
+
+train_data <- fuel_sample2[train_index, ]
+test_data <- fuel_sample2[-train_index, ]
+
+dim(train_data)
+dim(test_data)
+```
+
+### III. Problem Statement
+  
+  The main purpose of this project is to understand whether there are distinctive groups of fuel purchasing contracts for U.S. power plants using a K-means clustering analysis. The three questions I aim to answer through this analysis are:
+
+1. Are the fuel purchasing groups within the dataset distinct from each other?
+
+2. How are the fuel purchasing groups different from each other? What are the distinguishable characteristics from each group? 
+
+3. How can we use this clustering analysis to better understand how fuel purchasing decisions are made and the types of power that are used in the U.S.?
+
+### IV. Analysis and Discussion
+  
+  The goal of this project was to determine whether there were distinctive groups of fuel purchasing contracts for power plants in the United States. Due to the fact that K-means clustering is heavily reliant on numerical distance calculations, the key variables that represented the quantity, quality, and purchasing costs for the given fuel types were chosen for the model. These variables were fuel received in units, fuel heat content, fuel cost per MMBtu, total fuel received, total fuel costs, and sulfur and ash contents. Since each of the seven variables were measured on different scales, the variables had to be standardized prior to the start of the clustering analysis to prevent the larger variables from dominating. Each variable was then able to contribute equally for the analysis and the calculations for the distances between the observations. 
+  
+  In order to figure out the appropriate number of clusters, the elbow method and silhouette method were used. The silhouette method had indicated that a four-cluster solution was the appropriate number, however upon inspecting this solution, it appeared that there was a cluster with only two observations within it. Therefore, this cluster was likely representative of outliers instead of a useful and meaningful grouping. Because of this, a three-cluster solution was evaluated and eventually was selected as the appropriate solution as it produced more balanced and interpretable clusters.
+  
+  
+  After the correct clustering model was selected, each of the three clusters that were produced were evaluated. The characteristics and key variables were crucial in this examination as they were the factors that distinguished each grouping from each other. The influence of the different fuel types and geographic locations were identified through this analysis. The results were then interpreted in order to accurately answer the three research questions that were posed previously to understand the patterns and behaviors that drive fuel purchasing decisions for U.S. power plants. 
+  
+  In looking at the produced table, it appeared that cluster one contained observations with smaller volumes, but higher costs for fuel purchases. Cluster two had high coal and heat purchases with the highest levels of ash and sulfur. Cluster three had high volume and lower heat purchases, which suggested this cluster contains groups that deal mostly with gas types of fuel. 
+  
+  In producing the fuel types and percentages from this analysis, it became clear what each cluster represented. Cluster one contained mostly natural gas purchases at 74.2%, with small amounts of purchases in oil at 21.7%, and coal being the lowest purchase category at 4.1%. Cluster two contained all coal purchases at 100% which made this cluster the most unique out of the three. Cluster three had a large volume of gas purchases at 99.8%, with only coal being the other power source to be purchased at just 0.2%. Additionally, the state distributions displayed data from each of the three clusters across all states. Cluster one had the largest counts out of the three as it was also the cluster with the most observations to begin with, by a wide margin. Yet, there was no single geographic pattern that could be determined, which indicated that the fuel purchases were connected by their characteristics more-so than their location. The clustering algorithm used here separated the observations in the dataset by their fuel characteristics, like the heat content, sulfur content, ash content, volume of purchases, and fuel cost. Originally, the expectation was that the location would influence the clusters more, given that different states have different access to various resources. However, since fuel type was a more impactful factor than state in this analysis, it suggested that fuels are likely transported across state lines and their purchasing decisions are influenced more by the characteristics and type of fuel instead of the location where the fuel is produced. 
+
+## K-Means Variable Selection
+```{r, echo=FALSE}
+cluster_train <- train_data %>%
+  select(
+    fuel_received_units,
+    fuel_mmbtu_per_unit,
+    fuel_cost_per_mmbtu,
+    fuel_received_mmbtu,
+    total_fuel_cost,
+    sulfur_content_pct,
+    ash_content_pct
+  )
+
+cluster_train_scaled <- scale(cluster_train)
+
+fviz_nbclust(cluster_train_scaled, kmeans, method = "wss")
+
+fviz_nbclust(cluster_train_scaled, kmeans, method = "silhouette")
+```
+
+## K-Means Four-Cluster Results
+```{r, include=FALSE}
+set.seed(6406)
+
+kmeans_model <- kmeans(
+  cluster_train_scaled,
+  centers = 4,
+  nstart = 25
+)
+
+kmeans_model
+
+train_data$Cluster <- as.factor(kmeans_model$cluster)
+head(train_data)
+
+aggregate(
+  cluster_train,
+  by = list(Cluster = train_data$Cluster),
+  mean
+)
+```
+
+```{r, echo=FALSE}
+table(train_data$Cluster)
+
+cluster_summary <- aggregate(
+  cluster_train,
+  by = list(Cluster = train_data$Cluster),
+  mean
+)
+
+cluster_summary[, -1] <- round(cluster_summary[, -1], 2)
+cluster_summary
+```
+
+## Three-Cluster Results
+```{r, echo=FALSE}
+set.seed(6406)
+
+kmeans_model3 <- kmeans(
+  cluster_train_scaled,
+  centers = 3,
+  nstart = 25
+)
+
+train_data$Cluster3 <- as.factor(kmeans_model3$cluster)
+
+table(train_data$Cluster3)
+
+cluster_summary3 <- aggregate(
+  cluster_train,
+  by = list(Cluster = train_data$Cluster3),
+  mean
+)
+
+cluster_summary3[, -1] <- round(cluster_summary3[, -1], 2)
+cluster_summary3
+```
+
+## Fuel Type Counts and Percentages
+```{r, echo=FALSE}
+table(train_data$Cluster3, train_data$fuel_type_code_pudl)
+
+prop.table(
+  table(train_data$Cluster3,
+        train_data$fuel_type_code_pudl),
+        1
+)
+```
+
+## State Data
+```{r, echo=FALSE}
+table(train_data$Cluster3, train_data$state)
+```
+
+### V. Research Questions Solutions
+
+  Upon reflecting on this analysis, the three problem statements and research questions were able to be answered. This ensured that the model was sufficient as each of the three questions had distinct solutions. 
+
+## Research Question 1
+
+Are the fuel purchasing groups within the dataset distinct from each other?
+
+  Yes, the K-means clustering analysis generated three different groups for fuel purchasing. Even though the silhouette method suggested a four-cluster solution, one of the clusters had contained only two observations and likely represented extreme outliers instead of useful information. This is why the three-cluster solution was the better, more well rounded option as it did produce more interpretable results. 
+
+## Research Question 2
+
+How are the fuel purchasing groups different from each other? What are the distinguishable characteristics from each group? 
+
+  The three clusters were able to be distinguished from one another by their differences in fuel type, quantity, cost, and purchase volumes. Cluster one consisted mostly of natural gas purchases with moderate amounts of oil purchases and mild fuel costs. Cluster two consisted entirely of coal purchases and also had the highest heat, sulfur, and ash contents. This is what made it the most distinctive cluster in the analysis. Cluster three was almost entirely made up of natural gas purchases and had the largest fuel purchase volumes with low heat content amounts. These main differences between each of the three clusters in the analysis displayed that the model was able to appropriately distinguish how fuel purchases are made based on their types and economic characteristics. 
+
+## Research Question 3
+
+How can we use this clustering analysis to better understand how fuel purchasing decisions are made and the types of power that are used in the U.S.?
+
+  This clustering analysis demonstrated how fuel purchasing decisions are made across the United States. The three clusters were primarily driven by their characteristics like fuel type, ash content, heat content, sulfur content, purchase volume, and fuel costs instead of the geographic location of each purchase. The conclusions drawn from the clusters suggested that the purchasing decisions on fuel is based on its characteristics and uses instead of where the fuel is produced and originally from. Being able to distinguish and identify patterns across fuel purchasing decisions can help companies gain a deeper understanding of the strategies that drive these decisions, and help them compare their purchasing behaviors to different industries. This can help them with future planning in their purchasing decisions and help them better manage their costs and acquisitions. 
+
+### VI. Conclusion
+  
+  This project and analysis produced a K-means clustering model that can be used to recognize meaningful patterns in fuel purchasing behaviors in various power plants across the United States. The three-cluster solution demonstrated a balanced and interpretable group of results that displayed how the purchasing decisions were based on characteristics like fuel type, heat content, sulfur content, ash content, purchase volume, and fuel costs. Several assumptions were made throughout the development of this analysis. A random 2% sample was created to limit the size of the data and create a representative sample of the overall population. The variables that had a large amount of missing variables were removed initially, and the observations that had missing values in important variables were also removed before the analysis. The remaining variables were kept for the analysis to appropriately identify useful information on purchasing decisions and patterns. 
+  
+  In summary, the clustering analysis performed indicated that fuel purchasing behaviors and decisions are based on the characteristics of the fuel rather than being influenced by the power plants location in the United States. These results suggest that this clustering analysis was able to correctly identify meaningful differences in purchasing patterns and behaviors, which helps organizations gain insight into how fueling decisions are made across the United States for power production purposes. 
